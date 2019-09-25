@@ -47,7 +47,7 @@ class DotExporter(BaseHTTPRequestHandler):
     msg = format % args
     if hasattr(self, 'msg'):
       msg += ' :: %s' % self.msg
-    if self.headers.get('Origin'):
+    if hasattr(self, 'headers') and self.headers.get('Origin'):
       msg += ' [%s]' % self.headers.get('Origin')
     BaseHTTPRequestHandler.log_message(self, msg)
 
