@@ -14,6 +14,7 @@ NODE_URL = os.environ.get("NODE_URL", "http://localhost:9933")
 LISTEN   = os.environ.get("LISTEN", "0.0.0.0")
 PORT     = int(os.environ.get("PORT", "8000"))
 DEBUG    = bool(os.environ.get("DEBUG", False))
+TIMEOUT  = 1
 
 
 
@@ -40,6 +41,8 @@ class DotExporter(BaseHTTPRequestHandler):
 
 
   def __init__(self, *args):
+    # updates the spec on every request
+    # TODO improve when previous block is known
     self.set_spec()
     BaseHTTPRequestHandler.__init__(self, *args)
 
@@ -56,7 +59,8 @@ class DotExporter(BaseHTTPRequestHandler):
     header  = { 'Content-Type': 'application/json', 'Accept': 'application/json' }
     payload = { 'jsonrpc': '2.0', 'method': method, 'params': params, 'id': 0 }
 
-    r = requests.post(NODE_URL, json=payload, headers=header)
+
+    r = requests.post(NODE_URL, json=payload, headers=header, timeout=TIMEOUT)
 
     try:
       return r.json()['result']
@@ -73,17 +77,12 @@ class DotExporter(BaseHTTPRequestHandler):
 
 
   def do_GET(self):
-
     if self.path == '/metrics':
       if not DotExporter.spec:
         self.set_spec()
       # maybe implement system_networkState in the future
       m = []
       try:
-        name    = self.query("system_name")
-        version = self.query("system_version")
-        chain   = self.query("system_chain")
-
         chain_getHeader = self.query("chain_getHeader")
         system_health   = self.query("system_health")
         runtime_version = self.query("state_getRuntimeVersion")
