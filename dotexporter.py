@@ -44,7 +44,6 @@ class DotExporter(BaseHTTPRequestHandler):
       DotExporter.spec = {}
 
   def set_previous(self):
-    print("set_previous()")
     try:
       previous = {}
       previous['head'] = 0
@@ -99,21 +98,13 @@ class DotExporter(BaseHTTPRequestHandler):
 
 
     if block == 'head':
-      print("head")
       head = int(header['number'], 16)
     if block == 'finalized':
-      print("final")
       head = int(header['block']['header']['number'], 16)
-    print("head ->>>>>>>>> " + str(head) + " block: " + block)
     block_diff = int( head - self.previous[block])
-    print("block_diff: " + str(block_diff))
     if head > self.previous[block]:
-       print("previous block : " + str(self.previous[block]))
-       print(" head block: " + str(head))
-       print("head > slef.previous block")
        self.previous[block] = head
        if(int(datetime.utcnow().timestamp()) > self.previous[block +'_epoch']):
-          print("updating epoch block: " + block)
           self.previous[block + '_epoch'] = int(datetime.utcnow().timestamp())
     try:
       return(int(overall_drift / block_diff ))
