@@ -7,6 +7,7 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import requests
 import os
+from datetime import datetime
 
 
 
@@ -21,6 +22,16 @@ TIMEOUT  = 1
 class DotExporter(BaseHTTPRequestHandler):
 
   spec = {}
+
+  last_head = {
+      'block': 0,
+      'epoch': int(datetime.utcnow().timestamp())
+  }
+  last_finalized = {
+      'block': 0,
+      'epoch': int(datetime.utcnow().timestamp())
+  }
+
 
   def set_spec(self):
     try:
@@ -41,9 +52,8 @@ class DotExporter(BaseHTTPRequestHandler):
 
 
   def __init__(self, *args):
-    # updates the spec on every request
-    # TODO improve when previous block is known
-    self.set_spec()
+    # have one fixed timestamp of this request
+    self.now_i = int(datetime.utcnow().timestamp())
     BaseHTTPRequestHandler.__init__(self, *args)
 
   def log_message(self, format, *args):
@@ -76,32 +86,63 @@ class DotExporter(BaseHTTPRequestHandler):
 
 
 
+  def get_drift(self, block, last):
+
+    overall_drift = self.now_i - last['epoch']
+    block_diff = block - last['block']
+
+    try:
+      return int(overall_drift / block_diff)
+    except:
+      return overall_drift
+
+
   def do_GET(self):
     if self.path == '/metrics':
-      if not DotExporter.spec:
-        self.set_spec()
       # maybe implement system_networkState in the future
-      m = []
+      m                 = []
+      current_head      = 0
+      current_finalized = 0
       try:
+        # get chain head
         chain_getHeader = self.query("chain_getHeader")
+        current_head    = int(chain_getHeader['number'], 16)
         system_health   = self.query("system_health")
         runtime_version = self.query("state_getRuntimeVersion")
+        drift_head      = self.get_drift(
+            current_head,
+            DotExporter.last_head
+        )
 
-        try:
-          chain_getFinalizedHead   = self.query("chain_getFinalizedHead")
-          chain_FinalizedHeadBlock = self.query("chain_getBlock", [chain_getFinalizedHead])
-          m.append({
-            'name': 'dot_chain_block_number',
-            'prop': { 'block': 'finalized' },
-            'value': int(chain_FinalizedHeadBlock['block']['header']['number'], 16)
-          })
-        except:
-          pass
+        # get finalized heads
+        chain_getFinalizedHead   = self.query("chain_getFinalizedHead")
+        chain_FinalizedHeadBlock = self.query("chain_getBlock", [chain_getFinalizedHead])
+        current_finalized        = int(chain_FinalizedHeadBlock['block']['header']['number'], 16)
+        drift_finalized          = self.get_drift(
+            current_finalized, 
+            DotExporter.last_finalized
+        )
+
+        m.append({
+          'name': 'dot_chain_block_number',
+          'prop': { 'block': 'finalized' },
+          'value': current_finalized
+        })
+        m.append({
+          'name': 'dot_chain_block_drift',
+          'prop': { 'block': 'finalized' },
+          'value': drift_finalized
+        })
 
         m.append({
           'name': 'dot_chain_block_number',
           'prop': { 'block': 'head' },
-          'value': int(chain_getHeader['number'], 16)
+          'value': current_head
+        })
+        m.append({
+          'name': 'dot_chain_block_drift',
+          'prop': { 'block': 'head' },
+          'value': drift_head
         })
         m.append({
           'name': 'dot_peer_count',
@@ -128,6 +169,22 @@ class DotExporter(BaseHTTPRequestHandler):
           'name': 'dot_rpc_healthy',
           'value': 0
         })
+
+
+      if not DotExporter.spec or current_head < DotExporter.last_head['block']:
+        self.set_spec()
+
+
+      if current_head > DotExporter.last_head['block']:
+        DotExporter.last_head = {
+            'block': current_head,
+            'epoch': self.now_i
+        }
+      if current_finalized > DotExporter.last_finalized['block']:
+        DotExporter.last_finalized = {
+            'block': current_finalized,
+            'epoch': self.now_i
+        }
 
       metrics = ''
       for i in m:
