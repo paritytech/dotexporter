@@ -16,14 +16,21 @@ LISTEN   = os.environ.get("LISTEN", "0.0.0.0")
 PORT     = int(os.environ.get("PORT", "8000"))
 DEBUG    = bool(os.environ.get("DEBUG", False))
 TIMEOUT  = 1
-STALL_TIMEOUT  = int(60)
 
 
 
 class DotExporter(BaseHTTPRequestHandler):
 
   spec = {}
-  previous = {}
+
+  last_head = {
+      'block': 0,
+      'epoch': int(datetime.utcnow().timestamp())
+  }
+  last_finalized = {
+      'block': 0,
+      'epoch': int(datetime.utcnow().timestamp())
+  }
 
 
   def set_spec(self):
@@ -43,23 +50,10 @@ class DotExporter(BaseHTTPRequestHandler):
     except:
       DotExporter.spec = {}
 
-  def set_previous(self):
-    try:
-      previous = {}
-      previous['head'] = 0
-      previous['head_epoch'] = datetime.utcnow().timestamp()
-      previous['finalized'] = 0
-      previous['finalized_epoch'] = datetime.utcnow().timestamp()
-      DotExporter.previous = previous
-    except:
-      DotExporter.previous = previous
 
   def __init__(self, *args):
-    # updates the spec on every request
-    # TODO improve when previous block is known
-    self.set_spec()
-    if not DotExporter.previous:
-      prevous = self.set_previous()
+    # have one fixed timestamp of this request
+    self.now_i = int(datetime.utcnow().timestamp())
     BaseHTTPRequestHandler.__init__(self, *args)
 
   def log_message(self, format, *args):
@@ -92,75 +86,64 @@ class DotExporter(BaseHTTPRequestHandler):
 
 
 
-  def check_drift(self, block, previous, header):
+  def get_drift(self, block, last):
 
-    overall_drift = int(datetime.utcnow().timestamp()) - int(self.previous[block + '_epoch'])
+    overall_drift = self.now_i - last['epoch']
+    block_diff = block - last['block']
 
-
-    if block == 'head':
-      head = int(header['number'], 16)
-    if block == 'finalized':
-      head = int(header['block']['header']['number'], 16)
-    block_diff = int( head - self.previous[block])
-    if head > self.previous[block]:
-       self.previous[block] = head
-       if(int(datetime.utcnow().timestamp()) > self.previous[block +'_epoch']):
-          self.previous[block + '_epoch'] = int(datetime.utcnow().timestamp())
     try:
-      return(int(overall_drift / block_diff ))
+      return int(overall_drift / block_diff)
     except:
-      return(overall_drift)
+      return overall_drift
+
 
   def do_GET(self):
     if self.path == '/metrics':
-      if not DotExporter.spec:
-        self.set_spec()
-      if not DotExporter.previous:
-        prevous = self.set_previous()
-
       # maybe implement system_networkState in the future
-      m = []
+      m                 = []
+      current_head      = 0
+      current_finalized = 0
       try:
+        # get chain head
         chain_getHeader = self.query("chain_getHeader")
+        current_head    = int(chain_getHeader['number'], 16)
         system_health   = self.query("system_health")
         runtime_version = self.query("state_getRuntimeVersion")
-        head_drift = self.check_drift("head",self.previous,chain_getHeader)
+        drift_head      = self.get_drift(
+            current_head,
+            DotExporter.last_head
+        )
 
-
-        current_head = int(chain_getHeader['number'], 16);
-
-        try:
-
-          chain_getFinalizedHead   = self.query("chain_getFinalizedHead")
-          chain_FinalizedHeadBlock = self.query("chain_getBlock", [chain_getFinalizedHead])
-          finalized_drift = self.check_drift("finalized",self.previous, chain_FinalizedHeadBlock)
-
-          m.append({
-            'name': 'dot_chain_block_number',
-            'prop': { 'block': 'finalized' },
-            'value': int(chain_FinalizedHeadBlock['block']['header']['number'], 16)
-          })
-          m.append({
-            'name': 'dot_chain_block_drift',
-            'prop': { 'block': 'finalized' },
-            'value': int(finalized_drift )
-          })
-
-
-        except:
-          raise
+        # get finalized heads
+        chain_getFinalizedHead   = self.query("chain_getFinalizedHead")
+        chain_FinalizedHeadBlock = self.query("chain_getBlock", [chain_getFinalizedHead])
+        current_finalized        = int(chain_FinalizedHeadBlock['block']['header']['number'], 16)
+        drift_finalized          = self.get_drift(
+            current_finalized, 
+            DotExporter.last_finalized
+        )
 
         m.append({
-          'prop': { 'block': 'head' },
           'name': 'dot_chain_block_number',
-          'value': int(chain_getHeader['number'], 16)
+          'prop': { 'block': 'finalized' },
+          'value': current_finalized
         })
         m.append({
-            'name': 'dot_chain_block_drift',
-            'prop': { 'block': 'head' },
-            'value': int(head_drift )
-          })
+          'name': 'dot_chain_block_drift',
+          'prop': { 'block': 'finalized' },
+          'value': drift_finalized
+        })
 
+        m.append({
+          'name': 'dot_chain_block_number',
+          'prop': { 'block': 'head' },
+          'value': current_head
+        })
+        m.append({
+          'name': 'dot_chain_block_drift',
+          'prop': { 'block': 'head' },
+          'value': drift_head
+        })
         m.append({
           'name': 'dot_peer_count',
           'value': int(system_health["peers"])
@@ -182,13 +165,26 @@ class DotExporter(BaseHTTPRequestHandler):
           'value': 1
         })
       except:
-        raise
         m.append({
           'name': 'dot_rpc_healthy',
           'value': 0
         })
 
-      DotExporter.previous = self.previous
+
+      if not DotExporter.spec or current_head < DotExporter.last_head['block']:
+        self.set_spec()
+
+
+      if current_head > DotExporter.last_head['block']:
+        DotExporter.last_head = {
+            'block': current_head,
+            'epoch': self.now_i
+        }
+      if current_finalized > DotExporter.last_finalized['block']:
+        DotExporter.last_finalized = {
+            'block': current_finalized,
+            'epoch': self.now_i
+        }
 
       metrics = ''
       for i in m:
