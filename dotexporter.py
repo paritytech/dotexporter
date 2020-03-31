@@ -3,8 +3,12 @@
 #
 # expose vital data of dot nodes for prometheus
 
-
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import sys
+if (sys.version_info.major == 3 and sys.version_info.minor >= 7):
+  from http.server import ThreadingHTTPServer as HTTPServer
+else:
+  from http.server import HTTPServer
+from http.server import BaseHTTPRequestHandler
 import requests
 import os
 from datetime import datetime
