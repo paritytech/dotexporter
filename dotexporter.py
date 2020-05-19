@@ -19,7 +19,7 @@ NODE_URL = os.environ.get("NODE_URL", "http://localhost:9933")
 LISTEN   = os.environ.get("LISTEN", "0.0.0.0")
 PORT     = int(os.environ.get("PORT", "8000"))
 DEBUG    = bool(os.environ.get("DEBUG", False))
-TIMEOUT  = bool(os.environ.get("RPC_TIMEOUT", 20))
+TIMEOUT  = int(os.environ.get("RPC_TIMEOUT", 20))
 
 
 
