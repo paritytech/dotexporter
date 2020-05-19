@@ -19,7 +19,7 @@ NODE_URL = os.environ.get("NODE_URL", "http://localhost:9933")
 LISTEN   = os.environ.get("LISTEN", "0.0.0.0")
 PORT     = int(os.environ.get("PORT", "8000"))
 DEBUG    = bool(os.environ.get("DEBUG", False))
-TIMEOUT  = 1
+TIMEOUT  = 10
 
 
 
@@ -168,7 +168,8 @@ class DotExporter(BaseHTTPRequestHandler):
           'name': 'dot_rpc_healthy',
           'value': 1
         })
-      except:
+      except Exception as e:
+        print(e)
         m.append({
           'name': 'dot_rpc_healthy',
           'value': 0
