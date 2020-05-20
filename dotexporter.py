@@ -18,8 +18,8 @@ from datetime import datetime
 NODE_URL = os.environ.get("NODE_URL", "http://localhost:9933")
 LISTEN   = os.environ.get("LISTEN", "0.0.0.0")
 PORT     = int(os.environ.get("PORT", "8000"))
-DEBUG    = bool(os.environ.get("DEBUG", False))
-TIMEOUT  = int(os.environ.get("RPC_TIMEOUT", 20))
+DEBUG    = bool(os.environ.get("DEBUG", True))
+TIMEOUT  = int(os.environ.get("RPC_TIMEOUT", 10))
 
 
 
@@ -35,6 +35,7 @@ class DotExporter(BaseHTTPRequestHandler):
       'block': 0,
       'epoch': int(datetime.utcnow().timestamp())
   }
+
 
 
   def set_spec(self):
@@ -58,6 +59,8 @@ class DotExporter(BaseHTTPRequestHandler):
   def __init__(self, *args):
     # have one fixed timestamp of this request
     self.now_i = int(datetime.utcnow().timestamp())
+    self.d_metrics = [] # metrics from debugging requests
+    self.rpc_errors = 0
     BaseHTTPRequestHandler.__init__(self, *args)
 
   def log_message(self, format, *args):
@@ -73,8 +76,23 @@ class DotExporter(BaseHTTPRequestHandler):
     header  = { 'Content-Type': 'application/json', 'Accept': 'application/json' }
     payload = { 'jsonrpc': '2.0', 'method': method, 'params': params, 'id': 0 }
 
+    if DEBUG:
+      print("query(): method '%s' params '%s'" % (method, params))
+      r_ts = datetime.utcnow().timestamp()
 
-    r = requests.post(NODE_URL, json=payload, headers=header, timeout=TIMEOUT)
+    try:
+      r = requests.post(NODE_URL, json=payload, headers=header, timeout=TIMEOUT)
+    except:
+      print("query(): method '%s' params '%s' failed" % (method, params))
+      self.rpc_errors = self.rpc_errors + 1
+      raise
+    finally:
+      if DEBUG:
+        self.d_metrics.append({
+          'name': 'dot_rpc_query_duration',
+          'prop': { 'method': method },
+          'value': datetime.utcnow().timestamp() - r_ts
+        })
 
     try:
       return r.json()['result']
@@ -107,12 +125,36 @@ class DotExporter(BaseHTTPRequestHandler):
       m                 = []
       current_head      = 0
       current_finalized = 0
+
+
+      try:
+        # separate these two for error resilience
+        system_health   = self.query("system_health")
+        runtime_version = self.query("state_getRuntimeVersion")
+
+        m.append({
+          'name': 'dot_peer_count',
+          'value': int(system_health["peers"])
+        })
+        m.append({
+          'name': 'dot_shouldHavePeers',
+          'value': int(system_health["shouldHavePeers"])
+        })
+        m.append({
+          'name': 'dot_isSyncing',
+          'value': int(system_health["isSyncing"])
+        })
+        m.append({
+          'name': 'dot_specVersion',
+          'value': int(runtime_version["specVersion"])
+        })
+      except Exception as e:
+        print(e)
+
       try:
         # get chain head
         chain_getHeader = self.query("chain_getHeader")
         current_head    = int(chain_getHeader['number'], 16)
-        system_health   = self.query("system_health")
-        runtime_version = self.query("state_getRuntimeVersion")
         drift_head      = self.get_drift(
             current_head,
             DotExporter.last_head
@@ -148,32 +190,13 @@ class DotExporter(BaseHTTPRequestHandler):
           'prop': { 'block': 'head' },
           'value': drift_head
         })
-        m.append({
-          'name': 'dot_peer_count',
-          'value': int(system_health["peers"])
-        })
-        m.append({
-          'name': 'dot_shouldHavePeers',
-          'value': int(system_health["shouldHavePeers"])
-        })
-        m.append({
-          'name': 'dot_isSyncing',
-          'value': int(system_health["isSyncing"])
-        })
-        m.append({
-          'name': 'dot_specVersion',
-          'value': int(runtime_version["specVersion"])
-        })
-        m.append({
-          'name': 'dot_rpc_healthy',
-          'value': 1
-        })
       except Exception as e:
         print(e)
-        m.append({
-          'name': 'dot_rpc_healthy',
-          'value': 0
-        })
+
+      m.append({
+        'name': 'dot_rpc_healthy',
+        'value': 0 if self.rpc_errors else 1
+      })
 
 
       if not DotExporter.spec or current_head < DotExporter.last_head['block']:
@@ -192,7 +215,7 @@ class DotExporter(BaseHTTPRequestHandler):
         }
 
       metrics = ''
-      for i in m:
+      for i in m + self.d_metrics:
         prop = ','.join([ f'{k}="{v}"' for k,v in { **DotExporter.spec, **i.get('prop', {})}.items()])
         if prop: prop = f'{{{prop}}}'
         metrics += f"{i['name']}{prop} {i['value']}\n"
