@@ -1,3 +1,11 @@
+
+
+**NOTE**: the dotexporter has been superseded by the native
+prometheus/substrate prometheus endpoints. for more information checkout
+https://substrate.dev/docs/en/tutorials/visualize-node-metrics/
+
+
+
 # dotexporter
 
 simple prometheus exporter to expose metrics like block head from rpc of a 
