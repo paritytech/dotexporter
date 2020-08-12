@@ -227,17 +227,17 @@ class DotExporter(BaseHTTPRequestHandler):
       chain_babeAuthorship = self.query("babe_epochAuthorship")
 
       for address in chain_babeAuthorship:
-          for primary_blocks in chain_babeAuthorship[address]['primary']:
+          for primary_block in chain_babeAuthorship[address]['primary']:
               m.append({
-                'name': 'dot_chain_babe_authorship',
-                 'prop': { 'type':'primary' },
-                 'value': primary_blocks
+                'name': 'dot_chain_babe_authorship_primary',
+                'prop': { 'address' : address, 'block' : primary_block},
+                'value': primary_block
               })
-          for secondary_blocks in chain_babeAuthorship[address]['secondary']:
+          for secondary_block in chain_babeAuthorship[address]['secondary']:
               m.append({
-                'name': 'dot_chain_babe_authorship',
-                'prop': { 'type':'secondary' },
-                'value': secondary_blocks
+                'name': 'dot_chain_babe_authorship_secondary',
+                'prop': { 'address' : address, 'block' : secondary_block},
+                'value': secondary_block
               })
       metrics = ''
       for i in m + self.d_metrics:
