@@ -19,7 +19,7 @@ NODE_URL = os.environ.get("NODE_URL", "http://localhost:9933")
 LISTEN   = os.environ.get("LISTEN", "0.0.0.0")
 PORT     = int(os.environ.get("PORT", "8000"))
 DEBUG    = bool(os.environ.get("DEBUG", True))
-TIMEOUT  = int(os.environ.get("RPC_TIMEOUT", 10))
+TIMEOUT  = int(os.environ.get("RPC_TIMEOUT", 15))
 
 
 
@@ -163,9 +163,12 @@ class DotExporter(BaseHTTPRequestHandler):
         # get finalized heads
         chain_getFinalizedHead   = self.query("chain_getFinalizedHead")
         chain_FinalizedHeadBlock = self.query("chain_getBlock", [chain_getFinalizedHead])
+        chain_babeAuthorship     = self.query("babe_epochAuthorship")
+        print("chain babeauthorship: " + str(chain_babeAuthorship))
+
         current_finalized        = int(chain_FinalizedHeadBlock['block']['header']['number'], 16)
         drift_finalized          = self.get_drift(
-            current_finalized, 
+            current_finalized,
             DotExporter.last_finalized
         )
 
@@ -213,6 +216,21 @@ class DotExporter(BaseHTTPRequestHandler):
             'block': current_finalized,
             'epoch': self.now_i
         }
+
+
+      for address in chain_babeAuthorship:
+          for primary_blocks in chain_babeAuthorship[address]['primary']:
+              m.append({
+                'name': 'dot_chain_babe_authorship',
+                 'prop': { 'type':'primary' },
+                 'value': primary_blocks
+              })
+          for secondary_blocks in chain_babeAuthorship[address]['secondary']:
+              m.append({
+                'name': 'dot_chain_babe_authorship',
+                'prop': { 'type':'secondary' },
+                'value': secondary_blocks
+              })
 
       metrics = ''
       for i in m + self.d_metrics:
