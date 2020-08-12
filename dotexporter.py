@@ -163,9 +163,6 @@ class DotExporter(BaseHTTPRequestHandler):
         # get finalized heads
         chain_getFinalizedHead   = self.query("chain_getFinalizedHead")
         chain_FinalizedHeadBlock = self.query("chain_getBlock", [chain_getFinalizedHead])
-        chain_babeAuthorship     = self.query("babe_epochAuthorship")
-        print("chain babeauthorship: " + str(chain_babeAuthorship))
-
         current_finalized        = int(chain_FinalizedHeadBlock['block']['header']['number'], 16)
         drift_finalized          = self.get_drift(
             current_finalized,
@@ -217,6 +214,17 @@ class DotExporter(BaseHTTPRequestHandler):
             'epoch': self.now_i
         }
 
+      metrics = ''
+      for i in m + self.d_metrics:
+        prop = ','.join([ f'{k}="{v}"' for k,v in { **DotExporter.spec, **i.get('prop', {})}.items()])
+        if prop: prop = f'{{{prop}}}'
+        metrics += f"{i['name']}{prop} {i['value']}\n"
+      return self.send(metrics)
+
+    elif self.path == '/babeauthorship':
+
+      m = []
+      chain_babeAuthorship = self.query("babe_epochAuthorship")
 
       for address in chain_babeAuthorship:
           for primary_blocks in chain_babeAuthorship[address]['primary']:
@@ -231,7 +239,6 @@ class DotExporter(BaseHTTPRequestHandler):
                 'prop': { 'type':'secondary' },
                 'value': secondary_blocks
               })
-
       metrics = ''
       for i in m + self.d_metrics:
         prop = ','.join([ f'{k}="{v}"' for k,v in { **DotExporter.spec, **i.get('prop', {})}.items()])
