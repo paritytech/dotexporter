@@ -226,6 +226,9 @@ class DotExporter(BaseHTTPRequestHandler):
       m = []
       chain_babeAuthorship = self.query("babe_epochAuthorship")
 
+      if not dotexporter.spec:
+        self.set_spec()
+
       for address in chain_babeAuthorship:
           for primary_block in chain_babeAuthorship[address]['primary']:
               m.append({
