@@ -226,7 +226,7 @@ class DotExporter(BaseHTTPRequestHandler):
       m = []
       chain_babeAuthorship = self.query("babe_epochAuthorship")
 
-      if not dotexporter.spec:
+      if not DotExporter.spec:
         self.set_spec()
 
       for address in chain_babeAuthorship:
