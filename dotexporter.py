@@ -14,13 +14,12 @@ import os
 from datetime import datetime
 
 
-
 NODE_URL = os.environ.get("NODE_URL", "http://localhost:9933")
 LISTEN   = os.environ.get("LISTEN", "0.0.0.0")
 PORT     = int(os.environ.get("PORT", "8000"))
 DEBUG    = bool(os.environ.get("DEBUG", True))
 TIMEOUT  = int(os.environ.get("RPC_TIMEOUT", 15))
-
+BLOCK_TIME  = int(os.environ.get("BLOCK_TIME", 6))
 
 
 class DotExporter(BaseHTTPRequestHandler):
@@ -230,17 +229,17 @@ class DotExporter(BaseHTTPRequestHandler):
         self.set_spec()
 
       for address in chain_babeAuthorship:
-          for primary_block in chain_babeAuthorship[address]['primary']:
+          for primary_slot in chain_babeAuthorship[address]['primary']:
               m.append({
                 'name': 'dot_chain_babe_authorship_primary',
-                'prop': { 'address' : address, 'block' : primary_block},
-                'value': primary_block
+                'prop': { 'address' : address, 'slot' : primary_slot},
+                'value': primary_slot * BLOCK_TIME
               })
-          for secondary_block in chain_babeAuthorship[address]['secondary']:
+          for secondary_slot in chain_babeAuthorship[address]['secondary']:
               m.append({
                 'name': 'dot_chain_babe_authorship_secondary',
-                'prop': { 'address' : address, 'block' : secondary_block},
-                'value': secondary_block
+                'prop': { 'address' : address, 'slot' : secondary_slot},
+                'value': secondary_slot * BLOCK_TIME
               })
       metrics = ''
       for i in m + self.d_metrics:
