@@ -14,13 +14,12 @@ import os
 from datetime import datetime
 
 
-
 NODE_URL = os.environ.get("NODE_URL", "http://localhost:9933")
 LISTEN   = os.environ.get("LISTEN", "0.0.0.0")
 PORT     = int(os.environ.get("PORT", "8000"))
 DEBUG    = bool(os.environ.get("DEBUG", True))
-TIMEOUT  = int(os.environ.get("RPC_TIMEOUT", 10))
-
+TIMEOUT  = int(os.environ.get("RPC_TIMEOUT", 15))
+BLOCK_TIME  = int(os.environ.get("BLOCK_TIME", 6))
 
 
 class DotExporter(BaseHTTPRequestHandler):
@@ -165,7 +164,7 @@ class DotExporter(BaseHTTPRequestHandler):
         chain_FinalizedHeadBlock = self.query("chain_getBlock", [chain_getFinalizedHead])
         current_finalized        = int(chain_FinalizedHeadBlock['block']['header']['number'], 16)
         drift_finalized          = self.get_drift(
-            current_finalized, 
+            current_finalized,
             DotExporter.last_finalized
         )
 
@@ -214,6 +213,34 @@ class DotExporter(BaseHTTPRequestHandler):
             'epoch': self.now_i
         }
 
+      metrics = ''
+      for i in m + self.d_metrics:
+        prop = ','.join([ f'{k}="{v}"' for k,v in { **DotExporter.spec, **i.get('prop', {})}.items()])
+        if prop: prop = f'{{{prop}}}'
+        metrics += f"{i['name']}{prop} {i['value']}\n"
+      return self.send(metrics)
+
+    elif self.path == '/babeauthorship':
+
+      m = []
+      chain_babeAuthorship = self.query("babe_epochAuthorship")
+
+      if not DotExporter.spec:
+        self.set_spec()
+
+      for address in chain_babeAuthorship:
+          for primary_slot in chain_babeAuthorship[address]['primary']:
+              m.append({
+                'name': 'dot_chain_babe_authorship_primary',
+                'prop': { 'address' : address, 'slot' : primary_slot},
+                'value': primary_slot * BLOCK_TIME
+              })
+          for secondary_slot in chain_babeAuthorship[address]['secondary']:
+              m.append({
+                'name': 'dot_chain_babe_authorship_secondary',
+                'prop': { 'address' : address, 'slot' : secondary_slot},
+                'value': secondary_slot * BLOCK_TIME
+              })
       metrics = ''
       for i in m + self.d_metrics:
         prop = ','.join([ f'{k}="{v}"' for k,v in { **DotExporter.spec, **i.get('prop', {})}.items()])
